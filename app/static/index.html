@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🎬 Movie Guessing AI</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+
+<div class="container">
+
+    <h1>🎬 Movie Guessing AI</h1>
+    <p class="subtitle">Think of a movie from the dataset</p>
+
+    <div id="question-box">
+        <p id="question">Loading...</p>
+    </div>
+
+    <div class="buttons">
+        <button onclick="sendAnswer(true)" class="yes-btn">Yes</button>
+        <button onclick="sendAnswer(false)" class="no-btn">No</button>
+    </div>
+
+    <div id="remaining"></div>
+
+    <div id="result" class="result"></div>
+
+</div>
+
+<script src="static/script.js"></script>
+
+</body>
+</html>
