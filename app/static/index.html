@@ -1,32 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>🎬 Movie Guessing AI</title>
-    <link rel="stylesheet" href="static/style.css">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🎬 Movie Assistant</title>
+    <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+    <header class="app-header">
+        <h1>🎬 Movie Assistant</h1>
+        <p>Entropy-powered movie guessing, recommendations, and explainability.</p>
+    </header>
 
-<div class="container">
+    <main class="grid">
+        <!-- Guess Panel -->
+        <section class="panel" id="guess-panel">
+            <h2>🎬 Guess My Movie</h2>
 
-    <h1>🎬 Movie Guessing AI</h1>
-    <p class="subtitle">Think of a movie from the dataset</p>
+            <div class="controls-row">
+                <button id="start-btn" class="btn primary">Start New Session</button>
+                <span id="guess-loading" class="loading hidden">Loading...</span>
+            </div>
 
-    <div id="question-box">
-        <p id="question">Loading...</p>
-    </div>
+            <div id="question-box" class="question-box">
+                <p id="question-text">Press “Start New Session” to begin.</p>
+            </div>
 
-    <div class="buttons">
-        <button onclick="sendAnswer(true)" class="yes-btn">Yes</button>
-        <button onclick="sendAnswer(false)" class="no-btn">No</button>
-    </div>
+            <div class="controls-row">
+                <button id="yes-btn" class="btn success" disabled>Yes</button>
+                <button id="no-btn" class="btn danger" disabled>No</button>
+            </div>
 
-    <div id="remaining"></div>
+            <div class="meta-grid">
+                <div><strong>Remaining:</strong> <span id="remaining-count">-</span></div>
+                <div><strong>Yes split:</strong> <span id="yes-count">-</span></div>
+                <div><strong>No split:</strong> <span id="no-count">-</span></div>
+                <div><strong>Info Gain:</strong> <span id="ig-value">-</span></div>
+            </div>
 
-    <div id="result" class="result"></div>
+            <div class="result-box" id="guess-result"></div>
 
-</div>
+            <div>
+                <h3>Decision Path</h3>
+                <ul id="decision-path" class="decision-path"></ul>
+            </div>
+        </section>
 
-<script src="static/script.js"></script>
+        <!-- Recommendation / NLP Panel -->
+        <section class="panel" id="recommend-panel">
+            <h2>🎯 Recommend Movies</h2>
 
+            <label for="nlp-input">Ask anything (e.g., “Who directed Parasite?”)</label>
+            <div class="controls-row">
+                <input id="nlp-input" type="text" placeholder="Type movie query..." />
+                <button id="voice-btn" class="btn secondary">🎤 Voice</button>
+            </div>
+
+            <div class="controls-row">
+                <button id="nlp-btn" class="btn primary">Run NLP Query</button>
+                <button id="recommend-btn" class="btn primary">Get Recommendations</button>
+                <span id="recommend-loading" class="loading hidden">Loading...</span>
+            </div>
+
+            <div id="nlp-output" class="output-box"></div>
+
+            <h3>Top Recommendations</h3>
+            <div id="recommendations" class="cards"></div>
+        </section>
+
+        <!-- Stats Panel -->
+        <section class="panel" id="stats-panel">
+            <h2>📊 Stats & Explainability</h2>
+
+            <div class="controls-row">
+                <button id="refresh-stats-btn" class="btn primary">Refresh Stats</button>
+                <span id="stats-loading" class="loading hidden">Loading...</span>
+            </div>
+
+            <div class="meta-grid">
+                <div><strong>Total movies:</strong> <span id="stats-total">-</span></div>
+                <div><strong>Theoretical min:</strong> <span id="stats-theoretical">-</span></div>
+                <div><strong>Actual average:</strong> <span id="stats-actual">-</span></div>
+            </div>
+
+            <div class="chart-wrap">
+                <canvas id="feature-chart"></canvas>
+            </div>
+        </section>
+    </main>
+
+    <footer class="app-footer">
+        <small id="global-error"></small>
+    </footer>
+
+    <script src="/static/script.js"></script>
 </body>
 </html>

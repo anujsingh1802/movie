@@ -19,7 +19,9 @@ class Question:
     question_text: str
     yes_count: int
     no_count: int
+    weighted_child_entropy: float
     information_gain: float
+    explanation: str
 
 
 @lru_cache(maxsize=1)
@@ -28,7 +30,6 @@ def load_dataset(data_path: str = DATA_PATH) -> pd.DataFrame:
     if "Title" not in df.columns:
         raise ValueError("Dataset must contain a 'Title' column")
 
-    # Normalize all feature columns to deterministic string values once.
     for col in df.columns:
         if col == "Title":
             continue
@@ -50,19 +51,32 @@ class MovieEngine:
         self.questions_asked = 0
 
     @staticmethod
-    def _expected_posterior_entropy(yes_count: int, no_count: int) -> float:
-        total = yes_count + no_count
-        if total <= 1:
-            return 0.0
+    def _safe_entropy(group_size: int) -> float:
+        return math.log2(group_size) if group_size > 0 else 0.0
 
-        entropy = 0.0
-        if yes_count:
-            p = yes_count / total
-            entropy += p * math.log2(yes_count)
-        if no_count:
-            p = no_count / total
-            entropy += p * math.log2(no_count)
-        return entropy
+    @classmethod
+    def _weighted_child_entropy(cls, parent_count: int, yes_count: int, no_count: int) -> float:
+        if parent_count <= 1:
+            return 0.0
+        p_yes = yes_count / parent_count
+        p_no = no_count / parent_count
+        return p_yes * cls._safe_entropy(yes_count) + p_no * cls._safe_entropy(no_count)
+
+    @classmethod
+    def information_gain(cls, parent_count: int, yes_count: int, no_count: int) -> float:
+        parent_entropy = cls._safe_entropy(parent_count)
+        weighted_children = cls._weighted_child_entropy(parent_count, yes_count, no_count)
+        return parent_entropy - weighted_children
+
+    @classmethod
+    def information_gain_explanation(cls, feature: str, value: str, parent_count: int, yes_count: int, no_count: int) -> str:
+        parent_entropy = cls._safe_entropy(parent_count)
+        weighted_children = cls._weighted_child_entropy(parent_count, yes_count, no_count)
+        gain = parent_entropy - weighted_children
+        return (
+            f"Question '{feature} == {value}' selected because Gain = Entropy(parent) - "
+            f"weighted_entropy(children) = {parent_entropy:.4f} - {weighted_children:.4f} = {gain:.4f} bits."
+        )
 
     @staticmethod
     def _question_text(feature: str, value: str) -> str:
@@ -70,11 +84,10 @@ class MovieEngine:
         return f"Is your movie {readable_feature} '{value}'?"
 
     def get_best_question(self) -> Optional[Question]:
-        total = len(self.remaining)
-        if total <= 1:
+        parent_count = len(self.remaining)
+        if parent_count <= 1:
             return None
 
-        parent_entropy = math.log2(total)
         best_question: Optional[Question] = None
         best_ig = float("-inf")
 
@@ -85,31 +98,32 @@ class MovieEngine:
 
             for raw_value, yes_count_raw in counts.items():
                 yes_count = int(yes_count_raw)
-                no_count = total - yes_count
+                no_count = parent_count - yes_count
                 if yes_count == 0 or no_count == 0:
                     continue
 
-                posterior_entropy = self._expected_posterior_entropy(yes_count, no_count)
-                information_gain = parent_entropy - posterior_entropy
+                gain = self.information_gain(parent_count, yes_count, no_count)
                 value = str(raw_value)
 
-                # Better split quality first; deterministic fallback on feature/value.
                 if (
-                    information_gain > best_ig
+                    gain > best_ig
                     or (
-                        math.isclose(information_gain, best_ig)
+                        math.isclose(gain, best_ig)
                         and best_question is not None
                         and (feature, value) < (best_question.feature, best_question.value)
                     )
                 ):
-                    best_ig = information_gain
+                    weighted_children = self._weighted_child_entropy(parent_count, yes_count, no_count)
+                    best_ig = gain
                     best_question = Question(
                         feature=feature,
                         value=value,
                         question_text=self._question_text(feature, value),
                         yes_count=yes_count,
                         no_count=no_count,
-                        information_gain=information_gain,
+                        weighted_child_entropy=weighted_children,
+                        information_gain=gain,
+                        explanation=self.information_gain_explanation(feature, value, parent_count, yes_count, no_count),
                     )
 
         return best_question

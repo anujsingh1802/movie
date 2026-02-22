@@ -52,7 +52,9 @@ class AskResponse(BaseModel):
     remaining: int
     yes_count: int
     no_count: int
+    weighted_child_entropy: float
     information_gain: float = Field(description="Expected entropy reduction in bits")
+    explanation: str
     questions_asked: int
 
 
@@ -156,7 +158,9 @@ def ask_question(session_id: str):
             remaining=len(session.engine.remaining),
             yes_count=question.yes_count,
             no_count=question.no_count,
+            weighted_child_entropy=round(question.weighted_child_entropy, 4),
             information_gain=round(question.information_gain, 4),
+            explanation=question.explanation,
             questions_asked=session.engine.questions_asked,
         )
 
