@@ -1,6 +1,4 @@
-// Movie Assistant frontend controller.
-(() => {
-  const API = "";
+const API = "";
 
   const state = {
     sessionId: null,
@@ -8,6 +6,8 @@
     decisionPath: [],
     chart: null,
     statsSupported: null,
+    nlpSupported: null,
+    recommendSupported: null,
   };
 
   const el = {
@@ -30,145 +30,30 @@
     recommendBtn: document.getElementById("recommend-btn"),
     recommendLoading: document.getElementById("recommend-loading"),
     nlpOutput: document.getElementById("nlp-output"),
-    recommendations: document.getElementById("recommendations"),
+  recommendations: document.getElementById("recommendations"),
 
-    refreshStatsBtn: document.getElementById("refresh-stats-btn"),
-    statsLoading: document.getElementById("stats-loading"),
-    statsTotal: document.getElementById("stats-total"),
-    statsTheoretical: document.getElementById("stats-theoretical"),
-    statsActual: document.getElementById("stats-actual"),
-    featureChart: document.getElementById("feature-chart"),
-  };
+  refreshStatsBtn: document.getElementById("refresh-stats-btn"),
+  statsTotal: document.getElementById("stats-total"),
+  statsTheoretical: document.getElementById("stats-theoretical"),
+  statsActual: document.getElementById("stats-actual"),
+  featureChart: document.getElementById("feature-chart"),
+};
 
-  function normalizeError(err) {
-    if (!err) return "Unknown error";
-    if (typeof err === "string") return err;
-    if (err.message) return err.message;
-    return JSON.stringify(err);
-  }
+async function sendAnswer(answer) {
+  setGuessLoading(true);
+  setGlobalError("");
 
-  async function apiFetch(path, options = {}) {
-    const response = await fetch(`${API}${path}`, options);
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = data.detail ?? data.error ?? `Request failed: ${response.status}`;
-      const message = typeof detail === "string" ? detail : JSON.stringify(detail);
-      throw new Error(message);
-    }
-    return data;
-  }
+  try {
+    const payload = {
+      sessionId: state.sessionId,
+      answer,
+    };
 
-  function setGlobalError(message = "") {
-    el.globalError.textContent = message;
-  }
-
-  function setGuessLoading(loading) {
-    el.guessLoading.classList.toggle("hidden", !loading);
-    el.startBtn.disabled = loading;
-    const lockAnswerButtons = loading || !state.currentQuestion;
-    el.yesBtn.disabled = lockAnswerButtons;
-    el.noBtn.disabled = lockAnswerButtons;
-  }
-
-  function setRecommendLoading(loading) {
-    el.recommendLoading.classList.toggle("hidden", !loading);
-    el.nlpBtn.disabled = loading;
-    el.recommendBtn.disabled = loading;
-    el.voiceBtn.disabled = loading;
-  }
-
-  function setStatsLoading(loading) {
-    el.statsLoading.classList.toggle("hidden", !loading);
-    el.refreshStatsBtn.disabled = loading;
-  }
-
-  async function startSession() {
-    setGlobalError("");
-    setGuessLoading(true);
-    try {
-      let startData;
-      try {
-        startData = await apiFetch("/start"); // expected GET
-      } catch {
-        startData = await apiFetch("/start", { method: "POST" }); // fallback
-      }
-
-      state.sessionId = startData.session_id || null;
-      state.currentQuestion = null;
-      state.decisionPath = [];
-      renderDecisionPath();
-      el.guessResult.textContent = "";
-
-      await fetchNextQuestion();
-    } catch (err) {
-      setGlobalError(normalizeError(err));
-    } finally {
-      setGuessLoading(false);
-    }
-  }
-
-  async function fetchNextQuestion() {
-    if (!state.sessionId) return;
-
-    setGuessLoading(true);
-    try {
-      const data = await apiFetch(`/ask?session_id=${encodeURIComponent(state.sessionId)}`);
-
-      if (data.result) {
-        state.currentQuestion = null;
-        el.questionText.textContent = "🎉 I guessed your movie!";
-        el.guessResult.innerHTML = `<strong>${data.result}</strong>`;
-        el.remainingCount.textContent = data.remaining ?? "-";
-        el.yesCount.textContent = "-";
-        el.noCount.textContent = "-";
-        el.igValue.textContent = "-";
-        return;
-      }
-
-      // Guard against malformed responses to avoid undefined payloads.
-      if (!data.feature || !data.value) {
-        state.currentQuestion = null;
-        throw new Error("/ask response did not include feature/value fields.");
-      }
-
-      const questionText = data.question_text || data.question || `Is ${data.feature} = ${data.value}?`;
-      state.currentQuestion = {
-        feature: data.feature,
-        value: data.value,
-        questionText,
-      };
-
-      el.questionText.textContent = questionText;
-      el.remainingCount.textContent = data.remaining ?? "-";
-      el.yesCount.textContent = data.yes_count ?? "-";
-      el.noCount.textContent = data.no_count ?? "-";
-      el.igValue.textContent = Number(data.information_gain ?? 0).toFixed(4);
-    } catch (err) {
-      setGlobalError(normalizeError(err));
-    } finally {
-      setGuessLoading(false);
-    }
-  }
-
-  async function sendAnswer(answer) {
-    if (!state.currentQuestion || !state.sessionId) return;
-
-    setGuessLoading(true);
-    setGlobalError("");
-
-    try {
-      const payload = {
-        session_id: state.sessionId,
-        feature: state.currentQuestion.feature,
-        value: state.currentQuestion.value,
-        answer,
-      };
-
-      await apiFetch("/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    await apiFetch("/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
       state.decisionPath.push(`${state.currentQuestion.questionText} → ${answer ? "Yes" : "No"}`);
       renderDecisionPath();
@@ -191,6 +76,11 @@
   }
 
   async function runNlpQuery() {
+    if (!state.nlpSupported || !state.recommendSupported) {
+      el.nlpOutput.innerHTML = '<div class="output-box">NLP/recommend endpoints are not available on this backend.</div>';
+      return;
+    }
+
     const query = el.nlpInput.value.trim();
     if (!query) return;
 
@@ -218,6 +108,11 @@
   }
 
   async function fetchRecommendations() {
+    if (!state.nlpSupported || !state.recommendSupported) {
+      el.recommendations.innerHTML = '<div class="output-box">NLP/recommend endpoints are not available on this backend.</div>';
+      return;
+    }
+
     const movie = el.nlpInput.value.trim();
     if (!movie) return;
 
@@ -240,18 +135,17 @@
       });
     } catch (err) {
       setGlobalError(normalizeError(err));
-    } finally {
-      setRecommendLoading(false);
-    }
+  } finally {
+    setRecommendLoading(false);
   }
+}
 
-  function setupVoiceInput() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      el.voiceBtn.disabled = true;
-      el.voiceBtn.textContent = "🎤 Not Supported";
-      return;
-    }
+function setupVoiceInput() {
+  if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+    el.voiceBtn.disabled = true;
+    el.voiceBtn.textContent = "🎤 Not Supported";
+    return;
+  }
 
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
@@ -273,12 +167,29 @@
     };
   }
 
-  async function detectStatsSupport() {
+  function applyNlpRecommendationUnsupportedState() {
+    el.nlpBtn.disabled = true;
+    el.recommendBtn.disabled = true;
+    el.nlpBtn.title = "Backend /nlp-query endpoint not available";
+    el.recommendBtn.title = "Backend /recommend endpoint not available";
+    el.nlpOutput.innerHTML = '<p>NLP/recommend endpoints are not available on this backend.</p>';
+    el.recommendations.innerHTML = '<div class="output-box">N/A</div>';
+  }
+
+  async function detectCapabilities() {
     try {
       const openapi = await apiFetch("/openapi.json");
+      state.nlpSupported = Boolean(openapi?.paths?.["/nlp-query"]);
+      state.recommendSupported = Boolean(openapi?.paths?.["/recommend"]);
       state.statsSupported = Boolean(openapi?.paths?.["/stats"]);
     } catch {
+      state.nlpSupported = false;
+      state.recommendSupported = false;
       state.statsSupported = false;
+    }
+
+    if (!state.nlpSupported || !state.recommendSupported) {
+      applyNlpRecommendationUnsupportedState();
     }
 
     if (!state.statsSupported) {
@@ -304,48 +215,20 @@
       renderFeatureChart(data.feature_importance || {});
     } catch (err) {
       setGlobalError(normalizeError(err));
-    } finally {
-      setStatsLoading(false);
-    }
+  } finally {
+    setStatsLoading(false);
   }
+}
 
-  function renderFeatureChart(featureImportance) {
-    const labels = Object.keys(featureImportance);
-    const values = Object.values(featureImportance);
+function renderFeatureChart(data) {
+  const labels = Object.keys(data);
+  const values = Object.values(data);
+  if (!labels.length) return;
 
-    // Preferred rendering with Chart.js if available.
-    if (window.Chart) {
-      if (state.chart) state.chart.destroy();
-      state.chart = new Chart(el.featureChart, {
-        type: "bar",
-        data: {
-          labels,
-          datasets: [{
-            label: "Feature Importance",
-            data: values,
-            backgroundColor: "rgba(93, 139, 255, 0.75)",
-            borderColor: "rgba(93, 139, 255, 1)",
-            borderWidth: 1,
-          }],
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: "#eaf0ff" } },
-            y: { ticks: { color: "#eaf0ff" }, beginAtZero: true },
-          },
-        },
-      });
-      return;
-    }
-
-    // Fallback rendering if third-party script is blocked.
-    const wrap = el.featureChart.parentElement;
-    wrap.innerHTML = '<div id="fallback-bars" class="fallback-bars"></div>';
-    const bars = wrap.querySelector("#fallback-bars");
-    const max = Math.max(...values, 1);
-    labels.forEach((label, i) => {
+  const max = Math.max(...values);
+  const bars = document.createElement("div");
+  bars.className = "fallback-bars";
+  labels.forEach((label, i) => {
       const row = document.createElement("div");
       row.className = "fallback-row";
       const pct = (Number(values[i]) / max) * 100;
@@ -370,9 +253,8 @@
   async function init() {
     bindEvents();
     setupVoiceInput();
-    await detectStatsSupport();
+    await detectCapabilities();
     await loadStats();
   }
 
   init();
-})();
