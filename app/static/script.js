@@ -1,41 +1,121 @@
 const API_BASE = "";
 
-let currentFeature = null;
-let currentValue = null;
+const state = {
+    sessionId: null,
+    feature: null,
+    value: null,
+    pending: false,
+    ended: false,
+};
 
-async function startGame() {
-    await fetch(`${API_BASE}/start`);
-    loadQuestion();
+const ui = {
+    question: document.getElementById("question"),
+    result: document.getElementById("result"),
+    remaining: document.getElementById("remaining"),
+    buttons: document.querySelector(".buttons"),
+    yes: document.querySelector(".yes-btn"),
+    no: document.querySelector(".no-btn"),
+};
+
+function lockButtons(locked) {
+    state.pending = locked;
+    ui.yes.disabled = locked || state.ended;
+    ui.no.disabled = locked || state.ended;
 }
 
-async function loadQuestion() {
-    const response = await fetch(`${API_BASE}/ask`);
-    const data = await response.json();
+function showError(message) {
+    ui.question.innerText = "⚠️ Request failed";
+    ui.result.innerText = message || "Unknown error";
+}
 
-    if (data.result) {
-        document.getElementById("question").innerText = "🎉 I guessed it!";
-        document.getElementById("result").innerText = data.result;
-        document.querySelector(".buttons").style.display = "none";
-        return;
+async function api(path, options = {}) {
+    const response = await fetch(`${API_BASE}${path}`, options);
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(payload.detail || payload.error || "API error");
     }
 
-    currentFeature = data.feature;
-    currentValue = data.value;
+    return payload;
+}
 
-    document.getElementById("question").innerText =
-        `Is ${currentFeature} equal to "${currentValue}"?`;
+function renderQuestion(payload) {
+    state.feature = payload.feature;
+    state.value = payload.value;
 
-    document.getElementById("remaining").innerText =
-        `Remaining Movies: ${data.remaining}`;
+    ui.question.innerText = payload.question;
+    ui.remaining.innerText = `Remaining Movies: ${payload.remaining}`;
+    ui.result.innerText = `IG: ${Number(payload.information_gain).toFixed(3)} bits`;
+}
+
+function renderResult(payload) {
+    state.ended = true;
+    ui.question.innerText = "🎉 I guessed it!";
+    ui.result.innerText = payload.result;
+    ui.remaining.innerText = `Questions asked: ${payload.questions_asked}`;
+    ui.buttons.style.display = "none";
+}
+
+async function startGame() {
+    lockButtons(true);
+    state.ended = false;
+    ui.buttons.style.display = "flex";
+    ui.result.innerText = "";
+
+    try {
+        const payload = await api("/start", { method: "POST" });
+        state.sessionId = payload.session_id;
+        await ask();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        lockButtons(false);
+    }
+}
+
+async function ask() {
+    if (!state.sessionId || state.ended) return;
+
+    lockButtons(true);
+    try {
+        const payload = await api(`/ask?session_id=${encodeURIComponent(state.sessionId)}`);
+
+        if (payload.result) {
+            renderResult(payload);
+            return;
+        }
+
+        renderQuestion(payload);
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        lockButtons(false);
+    }
 }
 
 async function sendAnswer(answer) {
-    await fetch(
-        `${API_BASE}/answer?feature=${currentFeature}&value=${currentValue}&answer=${answer}`,
-        { method: "POST" }
-    );
+    if (state.pending || state.ended || !state.sessionId || !state.feature) return;
 
-    loadQuestion();
+    lockButtons(true);
+    try {
+        await api("/answer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                session_id: state.sessionId,
+                feature: state.feature,
+                value: state.value,
+                answer,
+            }),
+        });
+
+        await ask();
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        lockButtons(false);
+    }
 }
 
+window.sendAnswer = sendAnswer;
 startGame();
